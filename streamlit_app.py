@@ -64,6 +64,8 @@ if st.button("🚀 Generate Note"):
             {"role": "user", "content": f"Here is an example note style:\n{example_notes}\n\nNow format this new case using the same structure:\n{input_text}"}
         ]
     )
+    st.session_state.generated_note = response.choices[0].message.content
+    st.rerun() 
 
     # ✅ Store AI-generated note in session state
     st.session_state.generated_note = response.choices[0].message.content
