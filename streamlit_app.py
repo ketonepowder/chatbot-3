@@ -70,14 +70,14 @@ if st.button("🚀 Generate Note"):
     # ✅ Store AI-generated note in session state
     st.session_state.generated_note = response.choices[0].message.content
 
-    st.subheader("📄 AI-Generated Note in Your Style")
-    st.session_state.generated_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
+   
 
 
 # ✅ Display AI-generated note in a rich text editor
-#st.subheader("📄 AI-Generated Note in Your Style")
-#edited_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
+st.subheader("📄 AI-Generated Note in Your Style")
+edited_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
 
+st.write("Raw API Response:", response.choices[0].message.content)
 # ✅ Convert Any Note to User’s Style
 if convert_note:
     format_instruction = f"Reformat this note using the same structure, bullet points, bold headers, and color emphasis as in the example notes."
