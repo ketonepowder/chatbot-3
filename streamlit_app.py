@@ -4,10 +4,20 @@ import re
 
 from streamlit_quill import st_quill 
 openai.api_key = st.secrets["api_keys"]["openai_key"]
+
+
 # ✅ Initialize OpenAI Client
-client = openai
+client = openai.OpenAI(api_key="your-api-key-here")  
 
 st.title("🖋️ AI-Powered Personalized Medical Notes with Full RTF Support")
+
+# ✅ Initialize Session State for AI Output
+if "generated_note" not in st.session_state:
+    st.session_state.generated_note = ""
+if "reformatted_note" not in st.session_state:
+    st.session_state.reformatted_note = ""
+if "updated_progress_note" not in st.session_state:
+    st.session_state.updated_progress_note = ""
 
 # Step 1: Paste Sample Notes (For AI Learning)
 st.subheader("📌 Step 1: Paste 3-5 Example Notes (No PHI)")
@@ -54,18 +64,13 @@ if st.button("🚀 Generate Note"):
             {"role": "user", "content": f"Here is an example note style:\n{example_notes}\n\nNow format this new case using the same structure:\n{input_text}"}
         ]
     )
-    
-    generated_note = response.choices[0].message.content
 
-    # ✅ Display AI-generated note in a rich text editor
-    st.subheader("📄 AI-Generated Note in Your Style")
-    edited_note = st_quill(value=generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
+    # ✅ Store AI-generated note in session state
+    st.session_state.generated_note = response.choices[0].message.content
 
-    # ✅ Save Edited Note for Training
-    if st.button("👍 Approve This Note"):
-        with open("approved_notes.txt", "a") as file:
-            file.write(f"\n\n{edited_note}")
-        st.success("✅ Note Approved & Saved for AI Training.")
+# ✅ Display AI-generated note in a rich text editor
+st.subheader("📄 AI-Generated Note in Your Style")
+edited_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
 
 # ✅ Convert Any Note to User’s Style
 if convert_note:
@@ -78,10 +83,12 @@ if convert_note:
             {"role": "user", "content": f"Example Notes:\n{example_notes}\n\nReformat this note using the same structure:\n{existing_note}"}
         ]
     )
-    
-    reformatted_note = response.choices[0].message.content
-    st.subheader("🔄 Reformatted Note in Your Style")
-    st_quill(value=reformatted_note, placeholder="Edit reformatted note...", html=True, key="reformatted_editor")
+
+    # ✅ Store reformatted note in session state
+    st.session_state.reformatted_note = response.choices[0].message.content
+
+st.subheader("🔄 Reformatted Note in Your Style")
+st_quill(value=st.session_state.reformatted_note, placeholder="Edit reformatted note...", html=True, key="reformatted_editor")
 
 # ✅ Generate a Next-Day Progress Note Update
 if update_progress_note:
@@ -94,13 +101,15 @@ if update_progress_note:
             {"role": "user", "content": f"Previous Progress Note:\n{previous_progress_note}\n\nGenerate an updated version for the next day's progress note."}
         ]
     )
-    
-    updated_progress_note = response.choices[0].message.content
-    st.subheader("📅 Next-Day Progress Note Update")
-    st_quill(value=updated_progress_note, placeholder="Edit next-day note...", html=True, key="next_day_editor")
 
-    # ✅ User Feedback System
-    if st.button("👍 Approve This Updated Note"):
-        with open("approved_notes.txt", "a") as file:
-            file.write(f"\n\n{updated_progress_note}")
-        st.success("✅ Updated Note Approved & Saved for AI Training.")
+    # ✅ Store updated progress note in session state
+    st.session_state.updated_progress_note = response.choices[0].message.content
+
+st.subheader("📅 Next-Day Progress Note Update")
+st_quill(value=st.session_state.updated_progress_note, placeholder="Edit next-day note...", html=True, key="next_day_editor")
+
+# ✅ Save Edited Note for Training
+if st.button("👍 Approve This Note"):
+    with open("approved_notes.txt", "a") as file:
+        file.write(f"\n\n{edited_note}")
+    st.success("✅ Note Approved & Saved for AI Training.")
