@@ -1,56 +1,133 @@
 import streamlit as st
-from openai import OpenAI
+import openai
+import re
+openai.api_key = st.secrets["api_keys"]["openai_key"]
+# ✅ Initialize OpenAI Client
+client = openai
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+st.title("AI-Powered Personalized Medical Notes")
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+# Step 1: Paste Sample Notes (For AI Learning)
+st.subheader("Step 1: Paste 3-5 Example Notes (No PHI)")
+example_notes = st.text_area("Paste Sample Notes Here", height=200)
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+# Step 2: Enter New Patient Details (For AI to Generate a New Note)
+st.subheader("Step 2: Enter New Patient Case Details")
+input_text = st.text_area("Enter Patient Case Details", height=150)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# Step 3: Optional AI Instruction Box
+st.subheader("Optional: Customize AI Output")
+custom_instruction = st.text_area("Example: 'Make the assessment section more detailed' or 'Use shorter sentences'")
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+# Step 4: Convert Existing Notes into Your Style
+st.subheader("Step 4: Convert Any Note to Your Style")
+existing_note = st.text_area("Paste a Note Here to Convert to Your Writing Style", height=200)
+convert_note = st.button("Convert to My Style")
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# Step 5: Add "Next-Day Progress Note" Feature
+st.subheader("Step 5: Update a Progress Note for the Next Day")
+previous_progress_note = st.text_area("Paste Previous Progress Note (if applicable)", height=200)
+update_progress_note = st.button("Generate Next-Day Progress Note")
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# ✅ Function to Detect Formatting in Example Notes
+def detect_note_format(sample_text):
+    """Analyzes sample notes to determine bullet, numbered, or paragraph style."""
+    if re.search(r"^\d+\.", sample_text, re.MULTILINE):
+        return "Numbered List"
+    elif re.search(r"^- ", sample_text, re.MULTILINE):
+        return "Bullet Points"
+    elif re.search(r"^#", sample_text, re.MULTILINE):
+        return "Hashtags"
+    else:
+        return "Plain Text"
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+# ✅ Function to Detect Problem List Formatting
+def detect_problem_list_format(sample_text):
+    """Detects how the physician lists problems (hashtags, numbers, dashes, or plain text)."""
+    if re.search(r"^#", sample_text, re.MULTILINE):
+        return "Hashtags (# Diabetes, # HTN)"
+    elif re.search(r"^\d+\.", sample_text, re.MULTILINE):
+        return "Numbered List (1. Diabetes, 2. HTN)"
+    elif re.search(r"^- ", sample_text, re.MULTILINE):
+        return "Dashes (- Diabetes, - HTN)"
+    else:
+        return "Plain Text (Diabetes, HTN)"
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+# Auto-detect note & problem list formatting
+format_choice = detect_note_format(example_notes)
+problem_list_format = detect_problem_list_format(example_notes)
+
+st.write(f"📌 Detected Note Style: **{format_choice}** (Auto-Selected)")
+st.write(f"📌 Detected Problem List Style: **{problem_list_format}** (Auto-Selected)")
+
+# Allow user override
+override_format = st.radio("Want to override the detected note format?", ["Use Detected Style", "Paragraph", "Bullet Points", "Numbered List"])
+override_problem_list = st.radio("Want to override the detected problem list format?", ["Use Detected Style", "Hashtags", "Numbered List", "Dashes", "Plain Text"])
+use_icd_codes = st.radio("Use ICD-10 Standard Terminology?", ["No", "Yes (Use ICD-10 Codes)"])
+
+if override_format != "Use Detected Style":
+    format_choice = override_format
+if override_problem_list != "Use Detected Style":
+    problem_list_format = override_problem_list
+
+# ✅ Generate AI Note
+if st.button("Generate Note"):  
+    # Construct AI prompt dynamically based on detected style and custom instructions
+    format_instruction = f"Format the note using {format_choice.lower()} structure."
+    problem_list_instruction = f"Format the problem list using {problem_list_format.lower()}."
+    icd_instruction = "Ensure that all diagnoses match ICD-10 terminology." if use_icd_codes == "Yes (Use ICD-10 Codes)" else "Use natural clinical phrasing for problems."
+
+    full_instruction = f"{format_instruction} {problem_list_instruction} {icd_instruction} {custom_instruction}"
+
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": f"You are an AI medical scribe that structures notes in the exact format a physician prefers. {full_instruction}"},
+            {"role": "user", "content": f"Here is an example note style:\n{example_notes}\n\nNow format this new case using the same structure:\n{input_text}"}
+        ]
+    )
+    
+    generated_note = response.choices[0].message.content
+    st.subheader("Step 6: AI-Generated Note in Your Style")
+    st.text_area("Generated Note:", generated_note, height=300)
+
+# ✅ Convert Any Note to User’s Style
+if convert_note:
+    conversion_instruction = f"Reformat this note to match the style of the provided examples. Use the same structure, phrasing, and formatting as the sample notes."
+
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": f"You are an AI that rewrites medical notes to match a physician’s writing style. {conversion_instruction}"},
+            {"role": "user", "content": f"Example Notes:\n{example_notes}\n\nReformat this note using the same structure:\n{existing_note}"}
+        ]
+    )
+    
+    reformatted_note = response.choices[0].message.content
+    st.subheader("Step 7: Reformatted Note in Your Style")
+    st.text_area("Updated Note:", reformatted_note, height=300)
+
+# ✅ Generate a Next-Day Progress Note Update
+if update_progress_note and previous_progress_note:
+    update_instruction = "Update this progress note for the next day, adjusting any relevant details such as vitals, lab results, and treatment updates."
+
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": f"You are an AI that updates daily progress notes while maintaining the same structure as the physician's previous notes. {update_instruction}"},
+            {"role": "user", "content": f"Previous Progress Note:\n{previous_progress_note}\n\nGenerate an updated version for the next day's progress note."}
+        ]
+    )
+    
+    updated_progress_note = response.choices[0].message.content
+    st.subheader("Step 8: Next-Day Progress Note Update")
+    st.text_area("Updated Progress Note:", updated_progress_note, height=300)
+
+    # ✅ User Feedback System
+    if st.button("👍 Approve This Updated Note"):
+        with open("approved_notes.txt", "a") as file:
+            file.write(f"\n\n{updated_progress_note}")
+        st.success("✅ Updated Note Approved & Saved for AI Training.")
+
+    if st.button("👎 Regenerate Updated Note"):
+        st.warning("⚠️ Try again with different inputs.")
