@@ -70,9 +70,13 @@ if st.button("🚀 Generate Note"):
     # ✅ Store AI-generated note in session state
     st.session_state.generated_note = response.choices[0].message.content
 
+    st.subheader("📄 AI-Generated Note in Your Style")
+    st.session_state.generated_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
+
+
 # ✅ Display AI-generated note in a rich text editor
-st.subheader("📄 AI-Generated Note in Your Style")
-edited_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
+#st.subheader("📄 AI-Generated Note in Your Style")
+#edited_note = st_quill(value=st.session_state.generated_note, placeholder="Edit your note here...", html=True, key="quill_editor")
 
 # ✅ Convert Any Note to User’s Style
 if convert_note:
