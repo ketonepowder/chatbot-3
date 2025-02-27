@@ -7,7 +7,7 @@ openai.api_key = st.secrets["api_keys"]["openai_key"]
 
 
 # ✅ Initialize OpenAI Client
-client = openai.OpenAI(api_key="your-api-key-here")  
+client = openai 
 
 st.title("🖋️ AI-Powered Personalized Medical Notes with Full RTF Support")
 
