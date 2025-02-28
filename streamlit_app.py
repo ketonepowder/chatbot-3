@@ -12,7 +12,7 @@ client = openai
 # ---------------------------
 #       TITLE & INTRO
 # ---------------------------
-st.title("🖋️ AI-Powered Personalized Medical Notes with Full RTF Support")
+st.title("🖋️ AI-Powered Personalized Medical Notes")
 
 # ---------------------------
 #  INITIALIZE SESSION STATE
@@ -230,7 +230,7 @@ st.session_state.updated_progress_note = st_quill(
     html=True,
     key="next_day_editor"
 )
-
+st.subheader("Patent Pending speech to text and auto generated dot phrases coming soon")
 # ---------------------------
 # SAVE EDITED NOTES
 # ---------------------------
