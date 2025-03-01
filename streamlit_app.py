@@ -1,8 +1,10 @@
 import streamlit as st
 import openai
-import re
+from streamlit_quill import st_quill  # pip install streamlit-quill
 
-from streamlit_quill import st_quill 
+# ---------------------------
+#       OPENAI SETUP
+# ---------------------------
 openai.api_key = st.secrets["api_keys"]["openai_key"]
 
 
@@ -12,7 +14,7 @@ client = openai
 # ---------------------------
 #       TITLE & INTRO
 # ---------------------------
-st.title("🖋️ AI-Powered Personalized Medical Notes")
+st.title("🖋️ AI-Powered Personalized Medical Notes with Full RTF Support")
 
 # ---------------------------
 #  INITIALIZE SESSION STATE
@@ -85,49 +87,87 @@ enable_qol = st.checkbox("📌 Auto-Suggest Standard Orders for Common Problems"
 # ---------------------------
 # STEP 7: ICD-10 STANDARDIZATION
 # ---------------------------
-use_icd_codes = st.radio("📋 Use ICD-10 Standard Terminology?", ["No", "Yes (Use ICD-10 Codes as plain text)"])
+use_icd_codes = st.radio("📋 Use ICD-10 Standard Terminology?", ["No", "Yes (Use ICD-10 Codes)"])
+
+
+# ---------------------------
+# HELPER: CREATE CHAT COMPLETION
+# ---------------------------
+def generate_chat_completion(messages, model="gpt-3.5-turbo", temperature=0.7, max_tokens=1500):
+    """
+    Wrapper around openai.ChatCompletion.create() to handle errors
+    and return the text content or an error message.
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        if response.choices:
+            return response.choices[0].message.content
+        else:
+            return "❌ AI did not generate a response."
+    except Exception as e:
+        return f"❌ Error in OpenAI API call: {e}"
+
 
 # ---------------------------
 # GENERATE AI NOTE (CORE)
 # ---------------------------
 if st.button("🚀 Generate Note"):
-    try:
+    if not example_notes or not input_text:
+        st.warning("⚠️ Please provide example notes and patient data first.")
+    else:
         st.info("⏳ Generating AI note... Please wait.")
 
-        #format_instruction = "Use bold headers, bullet points, and clear section dividers for readability if detected in the physicians sample notes."
-        icd_instruction = "Ensure all diagnoses use ICD-10 standard terminology." if use_icd_codes == "Yes (Use ICD-10 Codes)" else "Use natural clinical phrasing."
-        qol_instruction = "Include standard quality-of-life orders like telemetry for chest pain, DVT prophylaxis, and IV fluids for dehydration." if enable_qol else ""
-
-        full_instruction = f"{icd_instruction} {qol_instruction} {custom_instruction}"
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are an AI medical scribe that structures notes in the exact format a physician prefers. {full_instruction}"
-                },
-                {
-                    "role": "user",
-                    "content": f"Here is an example note style:\n{example_notes}\n\nNow create this new case A&P using the same structure:\n{input_text}"
-                }
-            ]
-        )
-
-        # ✅ Store AI response in session
-        if response and response.choices:
-            ai_output = response.choices[0].message.content
+        # Build instructions from user settings
+        format_instruction = "Use bold headers, bullet points, and clear section dividers for readability."
+        if custom_instruction:
+            format_instruction += f"\n{custom_instruction}"
+        if use_icd_codes == "Yes (Use ICD-10 Codes)":
+            format_instruction += "\nEnsure all diagnoses use ICD-10 standard terminology."
         else:
-            ai_output = "❌ AI did not generate a response."
+            format_instruction += "\nUse natural clinical phrasing for diagnoses."
+        if enable_qol:
+            format_instruction += "\nInclude standard quality-of-life orders like telemetry for chest pain, DVT prophylaxis, and IV fluids for dehydration if relevant."
 
+        # Now we build a multi-message conversation in a few-shot style:
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an AI medical reasoning agent that structures notes in the exact format a physician prefers. "
+                    "Analyze the user's example notes to determine that style."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Here is an example note style:\n{example_notes}"
+            },
+            {
+                "role": "assistant",
+                "content": "Understood. I have analyzed the example style."
+            },
+            {
+                "role": "system",
+                "content": format_instruction
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Now format this new case using the same style:\n{input_text}"
+                )
+            }
+        ]
+
+        ai_output = generate_chat_completion(messages, model="gpt-3.5-turbo")
         st.session_state.generated_note = ai_output
-        st.success("✅ AI has generated a note!")
-
-        # ✅ Debug: Show Raw API Response
+        if "❌ Error" not in ai_output:
+            st.success("✅ AI has generated a note!")
         st.write("🔍 Debug - Raw AI Response:", ai_output)
 
-    except Exception as e:
-        st.error(f"❌ Error generating note: {e}")
 
 # ---------------------------
 # DISPLAY & EDIT AI OUTPUT
@@ -140,45 +180,52 @@ st.session_state.generated_note = st_quill(
     key="quill_editor"
 )
 
+
 # ---------------------------
 # CONVERT NOTE TO USER STYLE
 # ---------------------------
 if convert_note:
-    try:
+    if not example_notes or not existing_note:
+        st.warning("⚠️ Provide example notes and an existing note to convert.")
+    else:
         st.info("⏳ Converting to your style... Please wait.")
-        format_instruction = "Reformat this note using the same structure, bullet points, bold headers, and color emphasis as in the example notes."
 
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are an AI that rewrites medical notes to match a physician’s writing style create. {format_instruction}"
-                },
-                {
-                    "role": "user",
-                    "content": f"Example Notes:\n{example_notes}\n\nReformat this note using the same structure:\n{existing_note}"
-                }
-            ]
+        conv_instruction = (
+            "Rewrite the following clinical note so it matches the example style. "
+            "Incorporate bullet points, bold headers, or color emphasis ONLY if it appears in the example notes or is requested."
         )
 
-        if response and response.choices:
-            reformatted = response.choices[0].message.content
-        else:
-            reformatted = "❌ AI did not generate a response."
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an AI that rewrites medical notes to match a physician’s style."
+            },
+            {
+                "role": "user",
+                "content": f"Here is the example style:\n{example_notes}"
+            },
+            {
+                "role": "assistant",
+                "content": "Style analysis complete. Ready to transform notes."
+            },
+            {
+                "role": "system",
+                "content": conv_instruction
+            },
+            {
+                "role": "user",
+                "content": f"Please convert this note to the style:\n{existing_note}"
+            }
+        ]
 
+        reformatted = generate_chat_completion(messages, model="gpt-4")
         st.session_state.reformatted_note = reformatted
-        st.success("✅ Note reformatted to your style!")
+
+        if "❌ Error" not in reformatted:
+            st.success("✅ Note reformatted to your style!")
         st.write("🔍 Debug - Reformatted Note:", reformatted)
 
-    except Exception as e:
-        st.error(f"❌ Error converting note: {e}")
-
-# Display reformatted note
 st.subheader("🔄 Reformatted Note in Your Style")
-if "reformatted_note" not in st.session_state:
-    st.session_state.reformatted_note = ""
-
 st.session_state.reformatted_note = st_quill(
     value=st.session_state.reformatted_note,
     placeholder="Edit reformatted note...",
@@ -186,69 +233,84 @@ st.session_state.reformatted_note = st_quill(
     key="reformatted_editor"
 )
 
+
 # ---------------------------
 # NEXT-DAY PROGRESS NOTE
 # ---------------------------
 if update_progress_note:
-    try:
-        st.info("⏳ Updating progress note for next day...")
-        update_instruction = "Update this progress note for the next day, adjusting relevant details such as vitals, lab results, and treatment updates."
+    if not example_notes or not previous_progress_note:
+        st.warning("⚠️ Provide example notes and a previous progress note first.")
+    else:
+        st.info("⏳ Updating progress note for next day... Please wait.")
 
-        response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"You are an AI that updates daily progress notes while maintaining the same structure as the physician's previous notes. {update_instruction}"
-                },
-                {
-                    "role": "user",
-                    "content": f"Previous Progress Note:\n{previous_progress_note}\n\nGenerate an updated version for the next day's progress note."
-                }
-            ]
+        update_instruction = (
+            "Update this progress note as if one day has passed. "
+            "Adjust vitals, labs, and treatments logically. "
+            "Maintain the same style as the example notes."
         )
 
-        if response and response.choices:
-            updated_note = response.choices[0].message.content
-        else:
-            updated_note = "❌ AI did not generate a response."
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an AI that updates daily progress notes while maintaining the same style."
+            },
+            {
+                "role": "user",
+                "content": f"Here is the example style:\n{example_notes}"
+            },
+            {
+                "role": "assistant",
+                "content": "Style analysis complete. Ready to update the note."
+            },
+            {
+                "role": "system",
+                "content": update_instruction
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Previous Progress Note:\n{previous_progress_note}\n\n"
+                    "Generate an updated version for the next day's progress note."
+                )
+            }
+        ]
 
+        updated_note = generate_chat_completion(messages, model="gpt-4")
         st.session_state.updated_progress_note = updated_note
-        st.success("✅ Next-day progress note generated!")
+
+        if "❌ Error" not in updated_note:
+            st.success("✅ Next-day progress note generated!")
         st.write("🔍 Debug - Updated Progress Note:", updated_note)
 
-    except Exception as e:
-        st.error(f"❌ Error updating progress note: {e}")
-
 st.subheader("📅 Next-Day Progress Note Update")
-if "updated_progress_note" not in st.session_state:
-    st.session_state.updated_progress_note = ""
-
 st.session_state.updated_progress_note = st_quill(
     value=st.session_state.updated_progress_note,
     placeholder="Edit next-day note...",
     html=True,
     key="next_day_editor"
 )
-st.subheader("Patent Pending speech to text and auto generated dot phrases coming soon")
+
+
 # ---------------------------
 # SAVE EDITED NOTES
 # ---------------------------
 st.subheader("💾 Save Notes for Training")
-if st.button("👍 Approve AI-Generated Note"):
-    # Save the main AI-generated note (edited by user)
-    with open("approved_notes.txt", "a") as file:
-        file.write(f"\n\nMain AI-Generated Note:\n{st.session_state.generated_note}")
-    st.success("✅ Main AI-Generated Note Approved & Saved.")
+col1, col2, col3 = st.columns(3)
 
-if st.button("👍 Approve Reformatted Note"):
-    # Save the reformatted note
-    with open("approved_notes.txt", "a") as file:
-        file.write(f"\n\nReformatted Note:\n{st.session_state.reformatted_note}")
-    st.success("✅ Reformatted Note Approved & Saved.")
+with col1:
+    if st.button("👍 Approve AI-Generated Note"):
+        with open("approved_notes.txt", "a", encoding="utf-8") as file:
+            file.write(f"\n\n[MAIN AI-GENERATED NOTE]\n{st.session_state.generated_note}")
+        st.success("✅ Main AI-Generated Note Approved & Saved.")
 
-if st.button("👍 Approve Next-Day Progress Note"):
-    # Save the next-day progress note
-    with open("approved_notes.txt", "a") as file:
-        file.write(f"\n\nNext-Day Progress Note:\n{st.session_state.updated_progress_note}")
-    st.success("✅ Next-Day Progress Note Approved & Saved.")
+with col2:
+    if st.button("👍 Approve Reformatted Note"):
+        with open("approved_notes.txt", "a", encoding="utf-8") as file:
+            file.write(f"\n\n[REFORMATTED NOTE]\n{st.session_state.reformatted_note}")
+        st.success("✅ Reformatted Note Approved & Saved.")
+
+with col3:
+    if st.button("👍 Approve Next-Day Progress Note"):
+        with open("approved_notes.txt", "a", encoding="utf-8") as file:
+            file.write(f"\n\n[NEXT-DAY PROGRESS NOTE]\n{st.session_state.updated_progress_note}")
+        st.success("✅ Next-Day Progress Note Approved & Saved.")
