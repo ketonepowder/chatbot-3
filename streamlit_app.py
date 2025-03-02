@@ -93,7 +93,7 @@ use_icd_codes = st.radio("📋 Use ICD-10 Standard Terminology?", ["No", "Yes (U
 # ---------------------------
 # HELPER: CREATE CHAT COMPLETION
 # ---------------------------
-def generate_chat_completion(messages, model="gpt-3.5-turbo", temperature=0.7, max_tokens=1500):
+def generate_chat_completion(messages, model="gpt-4-turbo", temperature=0.7, max_tokens=3000):
     """
     Wrapper around openai.ChatCompletion.create() to handle errors
     and return the text content or an error message.
@@ -123,7 +123,7 @@ if st.button("🚀 Generate Note"):
         st.info("⏳ Generating AI note... Please wait.")
 
         # Build instructions from user settings
-        format_instruction = "Use bold headers, bullet points, and clear section dividers for readability."
+        format_instruction = "Use bold headers, bullet points, and clear section dividers for readability if it matches the users style"
         if custom_instruction:
             format_instruction += f"\n{custom_instruction}"
         if use_icd_codes == "Yes (Use ICD-10 Codes)":
@@ -131,15 +131,15 @@ if st.button("🚀 Generate Note"):
         else:
             format_instruction += "\nUse natural clinical phrasing for diagnoses."
         if enable_qol:
-            format_instruction += "\nInclude standard quality-of-life orders like telemetry for chest pain, DVT prophylaxis, and IV fluids for dehydration if relevant."
+            format_instruction += "\nInclude standard quality-of-life orders like telemetry for chest pain, CVA/TIA, and Syncope etc. Also for things like DVT prophylaxis, and IV fluids for dehydration if relevant."
 
         # Now we build a multi-message conversation in a few-shot style:
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are an AI medical reasoning agent that structures notes in the exact format a physician prefers. "
-                    "Analyze the user's example notes to determine that style."
+                    "You are an AI medical reasoning agent/scribe that structures notes in the exact format a physician prefers. "
+                    "Analyze the user's example notes to determine that style, and make slight improvements, but pay very close attention to the a/p structure and keep the same formatting. Use medical reasoning to suggest likely dx that would warrent inpatient admission, and include a/p items based on evidence based guidelines and relevent information in case details"
                 )
             },
             {
@@ -162,7 +162,7 @@ if st.button("🚀 Generate Note"):
             }
         ]
 
-        ai_output = generate_chat_completion(messages, model="gpt-3.5-turbo")
+        ai_output = generate_chat_completion(messages, model="gpt-4-turbo")
         st.session_state.generated_note = ai_output
         if "❌ Error" not in ai_output:
             st.success("✅ AI has generated a note!")
